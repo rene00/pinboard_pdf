@@ -5,7 +5,11 @@ import pinboard
 import pdfkit
 import os
 import logging
-from urlparse import urlparse
+
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -13,9 +17,14 @@ logger = logging.getLogger(__name__)
 
 def sanitize_filename(url, download_dir):
     """Generate a clean filename."""
-    filename = urlparse(url).path
+    u = urlparse(url)
+    if u.path and u.path != '/':
+        filename = '{0.netloc}_{0.path}'.format(u)
+    else:
+        # Catch domains (eg; example.org)
+        filename = '{0.netloc}'.format(u)
     filename = filename.replace('/', '')
-    filename = filename.split('.')[0]
+    filename = filename.replace('.', '_')
     return os.path.join(download_dir, '{0}.pdf'.format(filename))
 
 
@@ -56,13 +65,15 @@ def pinboard_pdf(api_token, download_dir, remove_unread, lowquality, quiet,
     options = wkhtmlpdf_opts(lowquality, quiet, grayscale)
     for bm in pb.posts.all(toread=True):
         filename = sanitize_filename(bm.url, download_dir)
-        success = True
         try:
+            logger.info('Attempting to download {0} saving it to {1}'.
+                        format(bm.url, filename))
             download_url(bm.url, filename, options=options, clobber=clobber)
         except IOError:
             pass
         else:
-            success = False
+            logger.info('Downloaded {0} saving it to {1}'.
+                        format(bm.url, filename))
         finally:
             if remove_unread:
                 bm.toread = False
